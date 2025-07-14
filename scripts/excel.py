@@ -14,14 +14,33 @@ def clean_sheet_name(name):
         name = name[:28] + "..."
     return name
 
-def create_indicator_sheet(wb, ods_name, indicator_data, sheet_name):
-    """Cria uma aba para um indicador específico."""
+def extract_main_indicator(indicator_ref):
+    """Extrai o indicador principal (ex: 1 de 1.1.1 ou 1.2.3)."""
+    if pd.isna(indicator_ref):
+        return "Unknown"
+    
+    # Converter para string
+    indicator_str = str(indicator_ref).strip()
+    
+    # Tentar extrair apenas o primeiro número (antes do primeiro ponto)
+    match = re.match(r'^(\d+)', indicator_str)
+    if match:
+        return match.group(1)
+    
+    # Se não conseguir extrair, retornar o próprio valor
+    return indicator_str
+
+def create_indicator_sheet(wb, ods_name, indicator_group, main_indicator, grouped_data):
+    """Cria uma aba para um indicador principal com todos os seus sub-indicadores."""
+    
+    # Nome da aba
+    sheet_name = clean_sheet_name(f"{ods_name}_{main_indicator}")
     
     # Criar nova aba
     ws = wb.create_sheet(title=sheet_name)
     
     # --- CABEÇALHO PRINCIPAL ---
-    title = f"SDG{ods_name.split('ODS')[-1]}: {ods_name}"
+    title = f"SDG{ods_name.split('ODS')[-1]}: {main_indicator}"
     ws.cell(row=1, column=1, value=title)
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
     
@@ -55,34 +74,45 @@ def create_indicator_sheet(wb, ods_name, indicator_data, sheet_name):
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     
-    # --- ADICIONAR DADOS DO INDICADOR ---
-    # Mapear dados do CSV para as colunas do template
-    row_data = []
+    # --- ADICIONAR DADOS DOS SUB-INDICADORES ---
+    current_row = 3
     
-    # Tente mapear as colunas do CSV para o template
-    # Ajuste este mapeamento conforme a estrutura real dos seus CSVs
+    # Mapeamento de colunas (ajuste conforme sua estrutura de CSV)
     column_mapping = {
         "Type": ["Type", "type", "Tipo"],
-        "Metric and indicator reference": ["Metric and indicator reference", "Reference", "Referencia", "Ref"],
+        "Metric and indicator reference": ["Metric and indicator reference", "Reference", "Referencia", "Ref", "Indicator"],
         "Metric / Indicator": ["Metric / Indicator", "Metric", "Indicator", "Indicador", "Metrica"],
-        "Value\n(for continuous data)": ["Value", "Valor", "Value (for continuous data)"],
+        "Value\n(for continuous data)": ["Value", "Valor", "Value (for continuous data)", "Value\n(for continuous data)"],
         "Yes/No": ["Yes/No", "YesNo", "Sim/Não", "Status"],
         "Evidence": ["Evidence", "Evidencia", "Proof"],
-        "Public\n(Yes/No)": ["Public", "Publico", "Public (Yes/No)"]
+        "Public\n(Yes/No)": ["Public", "Publico", "Public (Yes/No)", "Public\n(Yes/No)"]
     }
     
-    for header in headers:
-        value = ""
-        # Tentar encontrar a coluna correspondente no CSV
-        for possible_col in column_mapping.get(header, [header]):
-            if possible_col in indicator_data:
-                value = indicator_data[possible_col]
-                break
-        row_data.append(value)
-    
-    # Adicionar linha de dados
-    for col, value in enumerate(row_data, start=1):
-        ws.cell(row=3, column=col, value=value)
+    # Adicionar cada sub-indicador como uma linha
+    for _, row_data in grouped_data.iterrows():
+        row_values = []
+        
+        for header in headers:
+            value = ""
+            # Tentar encontrar a coluna correspondente no CSV
+            for possible_col in column_mapping.get(header, [header]):
+                if possible_col in row_data:
+                    value = row_data[possible_col]
+                    break
+            
+            # Se não encontrou, tentar sem quebra de linha
+            if value == "" and "\n" in header:
+                clean_header = header.replace("\n", " ")
+                if clean_header in row_data:
+                    value = row_data[clean_header]
+            
+            row_values.append(value)
+        
+        # Adicionar linha de dados
+        for col, value in enumerate(row_values, start=1):
+            ws.cell(row=current_row, column=col, value=value)
+        
+        current_row += 1
     
     # --- AJUSTES DE FORMATAÇÃO ---
     # Bordas finas
@@ -92,7 +122,7 @@ def create_indicator_sheet(wb, ods_name, indicator_data, sheet_name):
     )
     
     # Aplicar bordas a todas as células com dados
-    for row in ws.iter_rows(min_row=1, max_row=3, min_col=1, max_col=len(headers)):
+    for row in ws.iter_rows(min_row=1, max_row=current_row-1, min_col=1, max_col=len(headers)):
         for cell in row:
             cell.border = thin_border
     
@@ -102,13 +132,14 @@ def create_indicator_sheet(wb, ods_name, indicator_data, sheet_name):
         ws.column_dimensions[get_column_letter(idx)].width = width
     
     # Altura das linhas
-    for row in range(1, 4):
+    for row in range(1, current_row):
         ws.row_dimensions[row].height = 25
     
     # Alinhamento para células de dados
-    for col in range(1, len(headers) + 1):
-        cell = ws.cell(row=3, column=col)
-        cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    for row in range(3, current_row):
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=row, column=col)
+            cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
 def generate_formatted_excel():
     # Criar pasta se não existir
@@ -149,31 +180,38 @@ def generate_formatted_excel():
             
             print(f"  → ODS: {ods_name}")
             print(f"  → Colunas encontradas: {df.columns.tolist()}")
-            print(f"  → Número de indicadores: {len(df)}")
+            print(f"  → Número de linhas: {len(df)}")
             
-            # Criar uma aba para cada indicador (cada linha do CSV)
-            for idx, row in df.iterrows():
-                # Criar nome da aba baseado no indicador
-                if 'Metric / Indicator' in df.columns:
-                    indicator_name = str(row['Metric / Indicator'])
-                elif 'Metric' in df.columns:
-                    indicator_name = str(row['Metric'])
-                elif 'Indicator' in df.columns:
-                    indicator_name = str(row['Indicator'])
-                else:
-                    indicator_name = f"Indicator_{idx+1}"
-                
-                # Limpar nome da aba
-                sheet_name = clean_sheet_name(f"{ods_name}_{idx+1}_{indicator_name}")
-                
-                # Criar aba para este indicador
-                create_indicator_sheet(wb, ods_name, row, sheet_name)
+            # Encontrar a coluna de referência do indicador
+            ref_column = None
+            for col in ["Metric and indicator reference", "Reference", "Referencia", "Ref", "Indicator"]:
+                if col in df.columns:
+                    ref_column = col
+                    break
+            
+            if ref_column is None:
+                print(f"  → AVISO: Coluna de referência não encontrada. Usando índice.")
+                df['temp_ref'] = df.index.astype(str)
+                ref_column = 'temp_ref'
+            
+            # Extrair indicador principal para cada linha
+            df['main_indicator'] = df[ref_column].apply(extract_main_indicator)
+            
+            # Agrupar por indicador principal
+            grouped = df.groupby('main_indicator')
+            
+            print(f"  → Indicadores principais encontrados: {list(grouped.groups.keys())}")
+            
+            # Criar uma aba para cada indicador principal
+            for main_indicator, group_data in grouped:
+                create_indicator_sheet(wb, ods_name, main_indicator, main_indicator, group_data)
                 total_sheets += 1
-                
-                print(f"    → Aba criada: {sheet_name}")
+                print(f"    → Aba criada: {ods_name}_{main_indicator} ({len(group_data)} indicadores)")
             
         except Exception as e:
             print(f"Erro ao processar {csv_file.name}: {e}")
+            import traceback
+            traceback.print_exc()
     
     if total_sheets == 0:
         print("Nenhuma aba foi criada!")
