@@ -12,26 +12,27 @@ def clean_sheet_name(name):
         name = name[:28] + "..."
     return name
 
-def extract_sdg_and_metric(indicator_ref):
-    """Extract SDG and metric from indicator reference (e.g., indicator_1-1-1)."""
+def extract_sdg_metric_indicator(indicator_ref):
+    """Extract SDG, metric, and indicator from reference (e.g., indicator_1-1-1)."""
     if pd.isna(indicator_ref):
-        return "Unknown", "Unknown"
+        return "Unknown", "Unknown", indicator_ref
     
     indicator_str = str(indicator_ref).strip()
-    match = re.match(r'indicator_(\d+)-(\d+-\d+)', indicator_str)
+    match = re.match(r'indicator_(\d+)-(\d+)-(\d+)?', indicator_str)
     if match:
-        sdg = match.group(1)
-        metric = match.group(2).replace('-', '.')
-        return f"SDG{sdg}", metric
-    return "Unknown", indicator_str
+        sdg = f"SDG{match.group(1)}"
+        metric = f"{match.group(1)}.{match.group(2)}"
+        indicator = f"{match.group(1)}.{match.group(2)}.{match.group(3)}" if match.group(3) else metric
+        return sdg, metric, indicator
+    return "Unknown", "Unknown", indicator_str
 
-def create_sdg_sheet(wb, sdg_name, sdg_data):
+def create_sdg_sheet(wb, sdg_name, sdg_data, sdg_title):
     """Create a single sheet for an SDG with all its metrics and indicators."""
     sheet_name = clean_sheet_name(sdg_name)
     ws = wb.create_sheet(title=sheet_name)
     
     # --- Main Header ---
-    title = f"{sdg_name}"
+    title = f"{sdg_name}: {sdg_title}"
     ws.cell(row=1, column=1, value=title)
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
     
@@ -74,24 +75,52 @@ def create_sdg_sheet(wb, sdg_name, sdg_data):
         "Public\n(Yes/No)": ["Public", "Publico", "Public (Yes/No)", "Public\n(Yes/No)"]
     }
     
-    for _, row_data in sdg_data.iterrows():
-        row_values = []
-        for header in headers:
+    # Group by metric to ensure metrics are listed before their indicators
+    sdg_data['metric'] = sdg_data['Metric and indicator reference'].apply(lambda x: extract_sdg_metric_indicator(x)[1])
+    grouped = sdg_data.groupby('metric', sort=False)
+    
+    for metric, group_data in grouped:
+        # Add metric row
+        metric_row = group_data.iloc[0]
+        row_values = ["Metric", metric, metric_row.get("Metric / Indicator", metric)]
+        for header in headers[3:]:
             value = ""
             for possible_col in column_mapping.get(header, [header]):
-                if possible_col in row_data:
-                    value = row_data[possible_col]
+                if possible_col in metric_row:
+                    value = metric_row[possible_col]
                     break
             if value == "" and "\n" in header:
                 clean_header = header.replace("\n", " ")
-                if clean_header in row_data:
-                    value = row_data[clean_header]
+                if clean_header in metric_row:
+                    value = metric_row[clean_header]
             row_values.append(value)
         
         for col, value in enumerate(row_values, start=1):
             ws.cell(row=current_row, column=col, value=value)
         
         current_row += 1
+        
+        # Add indicator rows
+        for _, row_data in group_data.iterrows():
+            sdg, metric, indicator = extract_sdg_metric_indicator(row_data["Metric and indicator reference"])
+            if indicator != metric:  # Only add as indicator if it's not the metric itself
+                row_values = ["Indicator", indicator, row_data.get("Metric / Indicator", indicator)]
+                for header in headers[3:]:
+                    value = ""
+                    for possible_col in column_mapping.get(header, [header]):
+                        if possible_col in row_data:
+                            value = row_data[possible_col]
+                            break
+                    if value == "" and "\n" in header:
+                        clean_header = header.replace("\n", " ")
+                        if clean_header in row_data:
+                            value = row_data[clean_header]
+                    row_values.append(value)
+                
+                for col, value in enumerate(row_values, start=1):
+                    ws.cell(row=current_row, column=col, value=value)
+                
+                current_row += 1
     
     # --- Formatting ---
     thin_border = Border(
@@ -137,6 +166,13 @@ def generate_formatted_excel():
     total_sheets = 0
     sdg_dataframes = {}
     
+    # SDG titles (you can expand this dictionary as needed)
+    sdg_titles = {
+        "SDG1": "End poverty in all its forms everywhere",
+        "SDG2": "Zero hunger",
+        # Add more SDG titles as needed
+    }
+    
     for csv_file in csv_files:
         try:
             print(f"Processing: {csv_file.name}")
@@ -153,7 +189,7 @@ def generate_formatted_excel():
                 df['temp_ref'] = df.index.astype(str)
                 ref_column = 'temp_ref'
             
-            df[['sdg', 'metric']] = df[ref_column].apply(extract_sdg_and_metric).apply(pd.Series)
+            df[['sdg', 'metric', 'indicator']] = df[ref_column].apply(extract_sdg_metric_indicator).apply(pd.Series)
             
             for sdg, group_data in df.groupby('sdg'):
                 if sdg != "Unknown":
@@ -170,9 +206,10 @@ def generate_formatted_excel():
             traceback.print_exc()
     
     for sdg, data in sdg_dataframes.items():
-        create_sdg_sheet(wb, sdg, data)
+        sdg_title = sdg_titles.get(sdg, "Unknown SDG")
+        create_sdg_sheet(wb, sdg, data, sdg_title)
         total_sheets += 1
-        print(f"  → Sheet created: {sdg} ({len(data)} indicators)")
+        print(f"  → Sheet created: {sdg} ({len(data)} rows)")
     
     if total_sheets == 0:
         print("No sheets were created!")
