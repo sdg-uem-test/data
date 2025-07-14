@@ -51,7 +51,7 @@ jobs:
         continue-on-error: true
       - name: Copy Excel to _site directory
         run: |
-          mkdir -p _site/scripts/excel
+          mkdir -p _site/en/scripts/excel
           cp scripts/excel/sdg-data-formatado.xlsx _site/scripts/excel/
       - name: Place public files
         run: |
