@@ -22,17 +22,13 @@
 # ****************************************************************************
 
 name: Deploy to production
-
 on:
   push:
     branches:
       - master
-
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
       with:
@@ -49,6 +45,13 @@ jobs:
     - name: Build data
       run: |
         python scripts/build_data.py
+    - name: Generate formatted Excel
+      run: |
+        python scripts/excel.py
+    - name: Copy Excel to _site directory
+      run: |
+        mkdir -p _site/scripts/excel
+        cp scripts/excel/sdg-data-formatado.xlsx _site/scripts/excel/
     - name: Place public files
       run: |
         cp public/robots-prod.txt _site/robots.txt
