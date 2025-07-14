@@ -50,8 +50,8 @@ jobs:
         python scripts/excel.py
     - name: Copy Excel to _site directory
       run: |
-        mkdir -p _site/scripts/excel
-        cp scripts/excel/sdg-data-formatado.xlsx _site/scripts/excel/
+        mkdir -p _site/en/scripts/excel
+        cp scripts/excel/sdg-data-formatado.xlsx _site/en/scripts/excel/
     - name: Place public files
       run: |
         cp public/robots-prod.txt _site/robots.txt
