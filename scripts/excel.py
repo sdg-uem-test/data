@@ -3,14 +3,22 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from pathlib import Path
+import re
 
-def format_sheet(ws, ods_name):
-    """Formata uma aba do Excel conforme o template desejado."""
-    # Encontrar onde os dados reais começam (após os cabeçalhos originais do CSV)
-    data_start_row = 2  # Assumindo que os dados começam na linha 2
+def clean_sheet_name(name):
+    """Limpa o nome da aba para ser válido no Excel."""
+    # Remove caracteres inválidos para nomes de aba
+    name = re.sub(r'[\\/*?:"<>|]', '', str(name))
+    # Limita a 31 caracteres (limite do Excel)
+    if len(name) > 31:
+        name = name[:28] + "..."
+    return name
+
+def create_indicator_sheet(wb, ods_name, indicator_data, sheet_name):
+    """Cria uma aba para um indicador específico."""
     
-    # Inserir 2 linhas no topo para o título e novos cabeçalhos
-    ws.insert_rows(1, 2)
+    # Criar nova aba
+    ws = wb.create_sheet(title=sheet_name)
     
     # --- CABEÇALHO PRINCIPAL ---
     title = f"SDG{ods_name.split('ODS')[-1]}: {ods_name}"
@@ -34,7 +42,7 @@ def format_sheet(ws, ods_name):
         "Public\n(Yes/No)"
     ]
     
-    # Substituir os cabeçalhos originais pelos novos
+    # Adicionar cabeçalhos
     for col, header in enumerate(headers, start=1):
         ws.cell(row=2, column=col, value=header)
     
@@ -47,15 +55,44 @@ def format_sheet(ws, ods_name):
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     
+    # --- ADICIONAR DADOS DO INDICADOR ---
+    # Mapear dados do CSV para as colunas do template
+    row_data = []
+    
+    # Tente mapear as colunas do CSV para o template
+    # Ajuste este mapeamento conforme a estrutura real dos seus CSVs
+    column_mapping = {
+        "Type": ["Type", "type", "Tipo"],
+        "Metric and indicator reference": ["Metric and indicator reference", "Reference", "Referencia", "Ref"],
+        "Metric / Indicator": ["Metric / Indicator", "Metric", "Indicator", "Indicador", "Metrica"],
+        "Value\n(for continuous data)": ["Value", "Valor", "Value (for continuous data)"],
+        "Yes/No": ["Yes/No", "YesNo", "Sim/Não", "Status"],
+        "Evidence": ["Evidence", "Evidencia", "Proof"],
+        "Public\n(Yes/No)": ["Public", "Publico", "Public (Yes/No)"]
+    }
+    
+    for header in headers:
+        value = ""
+        # Tentar encontrar a coluna correspondente no CSV
+        for possible_col in column_mapping.get(header, [header]):
+            if possible_col in indicator_data:
+                value = indicator_data[possible_col]
+                break
+        row_data.append(value)
+    
+    # Adicionar linha de dados
+    for col, value in enumerate(row_data, start=1):
+        ws.cell(row=3, column=col, value=value)
+    
     # --- AJUSTES DE FORMATAÇÃO ---
-    # Bordas finas para todas as células com dados
+    # Bordas finas
     thin_border = Border(
         left=Side(style="thin"), right=Side(style="thin"),
         top=Side(style="thin"), bottom=Side(style="thin")
     )
     
     # Aplicar bordas a todas as células com dados
-    for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=len(headers)):
+    for row in ws.iter_rows(min_row=1, max_row=3, min_col=1, max_col=len(headers)):
         for cell in row:
             cell.border = thin_border
     
@@ -65,8 +102,13 @@ def format_sheet(ws, ods_name):
         ws.column_dimensions[get_column_letter(idx)].width = width
     
     # Altura das linhas
-    for row in range(1, ws.max_row + 1):
+    for row in range(1, 4):
         ws.row_dimensions[row].height = 25
+    
+    # Alinhamento para células de dados
+    for col in range(1, len(headers) + 1):
+        cell = ws.cell(row=3, column=col)
+        cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
 def generate_formatted_excel():
     # Criar pasta se não existir
@@ -79,8 +121,7 @@ def generate_formatted_excel():
         print(f"Erro: A pasta {data_dir} não existe!")
         return
     
-    # Listar CSVs e agrupar por ODS
-    ods_data = {}
+    # Listar CSVs
     csv_files = list(data_dir.glob('*.csv'))
     
     if not csv_files:
@@ -88,6 +129,15 @@ def generate_formatted_excel():
         return
     
     print(f"Encontrados {len(csv_files)} arquivos CSV em {data_dir}")
+    
+    # Criar Excel
+    excel_path = excel_dir / 'sdg-data-formatado.xlsx'
+    wb = openpyxl.Workbook()
+    
+    # Remover a aba padrão
+    wb.remove(wb.active)
+    
+    total_sheets = 0
     
     for csv_file in csv_files:
         try:
@@ -97,40 +147,42 @@ def generate_formatted_excel():
             # Extrair nome do ODS do nome do arquivo
             ods_name = csv_file.stem.split('_')[0]  # Ex: "ODS5" do arquivo "ODS5_gender.csv"
             
-            if ods_name not in ods_data:
-                ods_data[ods_name] = []
-            ods_data[ods_name].append(df)
+            print(f"  → ODS: {ods_name}")
+            print(f"  → Colunas encontradas: {df.columns.tolist()}")
+            print(f"  → Número de indicadores: {len(df)}")
             
-            print(f"  → Adicionado ao grupo: {ods_name} ({len(df)} linhas)")
+            # Criar uma aba para cada indicador (cada linha do CSV)
+            for idx, row in df.iterrows():
+                # Criar nome da aba baseado no indicador
+                if 'Metric / Indicator' in df.columns:
+                    indicator_name = str(row['Metric / Indicator'])
+                elif 'Metric' in df.columns:
+                    indicator_name = str(row['Metric'])
+                elif 'Indicator' in df.columns:
+                    indicator_name = str(row['Indicator'])
+                else:
+                    indicator_name = f"Indicator_{idx+1}"
+                
+                # Limpar nome da aba
+                sheet_name = clean_sheet_name(f"{ods_name}_{idx+1}_{indicator_name}")
+                
+                # Criar aba para este indicador
+                create_indicator_sheet(wb, ods_name, row, sheet_name)
+                total_sheets += 1
+                
+                print(f"    → Aba criada: {sheet_name}")
             
         except Exception as e:
             print(f"Erro ao processar {csv_file.name}: {e}")
     
-    if not ods_data:
-        print("Nenhum dado foi processado com sucesso!")
+    if total_sheets == 0:
+        print("Nenhuma aba foi criada!")
         return
     
-    # Criar Excel com abas formatadas - VOLTA AO MÉTODO ORIGINAL
-    excel_path = excel_dir / 'sdg-data-formatado.xlsx'
-    
-    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-        for ods_name, dfs in ods_data.items():
-            print(f"Criando aba para: {ods_name}")
-            
-            # Combinar todos os DataFrames do mesmo ODS
-            combined_df = pd.concat(dfs, ignore_index=True)
-            
-            # Escrever dados na aba (isso mantém os dados originais)
-            combined_df.to_excel(writer, sheet_name=ods_name, index=False)
-            
-            # Acessar a aba criada para formatar
-            ws = writer.sheets[ods_name]
-            format_sheet(ws, ods_name)
-            
-            print(f"  → Aba {ods_name} criada com {len(combined_df)} linhas")
-    
+    # Salvar o arquivo
+    wb.save(excel_path)
     print(f"\nExcel formatado gerado com sucesso: {excel_path}")
-    print(f"Abas criadas: {list(ods_data.keys())}")
+    print(f"Total de abas criadas: {total_sheets}")
 
 if __name__ == "__main__":
     generate_formatted_excel()
