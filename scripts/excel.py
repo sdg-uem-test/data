@@ -4,14 +4,17 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from pathlib import Path
 
-def format_sheet(ws, ods_name, df):
+def format_sheet(ws, ods_name):
     """Formata uma aba do Excel conforme o template desejado."""
-    # Limpar a aba primeiro
-    ws.delete_rows(1, ws.max_row)
+    # Encontrar onde os dados reais começam (após os cabeçalhos originais do CSV)
+    data_start_row = 2  # Assumindo que os dados começam na linha 2
+    
+    # Inserir 2 linhas no topo para o título e novos cabeçalhos
+    ws.insert_rows(1, 2)
     
     # --- CABEÇALHO PRINCIPAL ---
-    title = f"SDG{ods_name.split('ODS')[-1]}: {ods_name}"  # Ex: "SDG5: ODS5"
-    ws.append([title])
+    title = f"SDG{ods_name.split('ODS')[-1]}: {ods_name}"
+    ws.cell(row=1, column=1, value=title)
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
     
     # Estilo do título
@@ -30,7 +33,10 @@ def format_sheet(ws, ods_name, df):
         "Evidence",
         "Public\n(Yes/No)"
     ]
-    ws.append(headers)
+    
+    # Substituir os cabeçalhos originais pelos novos
+    for col, header in enumerate(headers, start=1):
+        ws.cell(row=2, column=col, value=header)
     
     # Estilo dos cabeçalhos
     header_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
@@ -40,22 +46,6 @@ def format_sheet(ws, ods_name, df):
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    
-    # --- ADICIONAR DADOS DO CSV ---
-    # Adicionar os dados do DataFrame abaixo dos cabeçalhos
-    for idx, row in df.iterrows():
-        # Mapear as colunas do CSV para as colunas do template
-        # Ajuste este mapeamento conforme a estrutura dos seus CSVs
-        row_data = []
-        for col in headers:
-            if col.replace('\n', ' ') in df.columns:
-                row_data.append(row[col.replace('\n', ' ')])
-            elif col in df.columns:
-                row_data.append(row[col])
-            else:
-                row_data.append("")  # Célula vazia se coluna não existir
-        
-        ws.append(row_data)
     
     # --- AJUSTES DE FORMATAÇÃO ---
     # Bordas finas para todas as células com dados
@@ -111,7 +101,7 @@ def generate_formatted_excel():
                 ods_data[ods_name] = []
             ods_data[ods_name].append(df)
             
-            print(f"  → Adicionado ao grupo: {ods_name}")
+            print(f"  → Adicionado ao grupo: {ods_name} ({len(df)} linhas)")
             
         except Exception as e:
             print(f"Erro ao processar {csv_file.name}: {e}")
@@ -120,30 +110,25 @@ def generate_formatted_excel():
         print("Nenhum dado foi processado com sucesso!")
         return
     
-    # Criar Excel com abas formatadas
+    # Criar Excel com abas formatadas - VOLTA AO MÉTODO ORIGINAL
     excel_path = excel_dir / 'sdg-data-formatado.xlsx'
     
-    # Criar workbook vazio
-    wb = openpyxl.Workbook()
-    # Remover a aba padrão
-    wb.remove(wb.active)
+    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+        for ods_name, dfs in ods_data.items():
+            print(f"Criando aba para: {ods_name}")
+            
+            # Combinar todos os DataFrames do mesmo ODS
+            combined_df = pd.concat(dfs, ignore_index=True)
+            
+            # Escrever dados na aba (isso mantém os dados originais)
+            combined_df.to_excel(writer, sheet_name=ods_name, index=False)
+            
+            # Acessar a aba criada para formatar
+            ws = writer.sheets[ods_name]
+            format_sheet(ws, ods_name)
+            
+            print(f"  → Aba {ods_name} criada com {len(combined_df)} linhas")
     
-    for ods_name, dfs in ods_data.items():
-        print(f"Criando aba para: {ods_name}")
-        
-        # Combinar todos os DataFrames do mesmo ODS
-        combined_df = pd.concat(dfs, ignore_index=True)
-        
-        # Criar nova aba
-        ws = wb.create_sheet(title=ods_name)
-        
-        # Aplicar formatação
-        format_sheet(ws, ods_name, combined_df)
-        
-        print(f"  → Aba {ods_name} criada com {len(combined_df)} linhas")
-    
-    # Salvar o arquivo
-    wb.save(excel_path)
     print(f"\nExcel formatado gerado com sucesso: {excel_path}")
     print(f"Abas criadas: {list(ods_data.keys())}")
 
