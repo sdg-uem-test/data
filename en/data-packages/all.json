@@ -3,6 +3,42 @@
   "title": "All indicators",
   "resources": [
     {
+      "path": "5-1-1/data.csv",
+      "name": "5-1-1",
+      "profile": "tabular-data-resource",
+      "scheme": "file",
+      "format": "csv",
+      "hashing": "md5",
+      "encoding": "utf-8",
+      "schema": {
+        "fields": [
+          {
+            "name": "Year",
+            "type": "integer",
+            "title": "Year"
+          },
+          {
+            "name": "Sex",
+            "type": "string",
+            "constraints": {
+              "enum": [
+                "Male",
+                "Female",
+                ""
+              ]
+            },
+            "title": "Sex"
+          },
+          {
+            "name": "Value",
+            "type": "integer",
+            "title": "Value"
+          }
+        ]
+      },
+      "title": "Whether or not legal frameworks are in place to promote, enforce and monitor equality and non‑discrimination on the basis of sex"
+    },
+    {
       "path": "1-2-2/data.csv",
       "name": "1-2-2",
       "profile": "tabular-data-resource",
@@ -5810,30 +5846,6 @@
         ]
       },
       "title": "Progress towards sustainable forest management"
-    },
-    {
-      "path": "5-1-1/data.csv",
-      "name": "5-1-1",
-      "profile": "tabular-data-resource",
-      "scheme": "file",
-      "format": "csv",
-      "hashing": "md5",
-      "encoding": "utf-8",
-      "schema": {
-        "fields": [
-          {
-            "name": "Year",
-            "type": "number",
-            "title": "Year"
-          },
-          {
-            "name": "Value",
-            "type": "number",
-            "title": "Value"
-          }
-        ]
-      },
-      "title": "Whether or not legal frameworks are in place to promote, enforce and monitor equality and non‑discrimination on the basis of sex"
     },
     {
       "path": "8-a-1/data.csv",
