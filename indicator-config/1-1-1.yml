@@ -28,8 +28,8 @@ indicator_name: global_indicators.1-1-1-title
 indicator_number: 1.1.1
 indicator_tabs:
   override: false
-  tab_1: ''
-  tab_2: ''
+  tab_1: chart
+  tab_2: table
   tab_3: ''
   tab_4: ''
 national_geographical_coverage: ''
@@ -47,4 +47,4 @@ sort: ''
 sources: []
 standalone: false
 tags: []
-x_axis_label: ''
+x_axis_label: Year
