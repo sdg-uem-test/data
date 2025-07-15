@@ -14,7 +14,11 @@ embedded_feature_tab_title: ''
 embedded_feature_title: ''
 embedded_feature_url: ''
 expected_disaggregations: []
-footer_fields: []
+footer_fields:
+  - series: Year
+    unit: ''
+    label: ''
+    value: '200'
 graph_annotations: []
 graph_limits: []
 graph_series_breaks: []
@@ -27,9 +31,9 @@ indicator_available: ''
 indicator_name: global_indicators.1-1-1-title
 indicator_number: 1.1.1
 indicator_tabs:
-  override: false
+  override: true
   tab_1: chart
-  tab_2: table
+  tab_2: ''
   tab_3: ''
   tab_4: ''
 national_geographical_coverage: ''
@@ -37,14 +41,19 @@ page_content: ''
 permalink: ''
 placeholder: ''
 precision: []
-progress_status: challenges_remain
+progress_status: not_available
 proxy: ''
 proxy_series: []
-publications: []
+publications:
+  - title: ''
+    link: ''
+    description: ''
+    date: ''
 related_indicators: []
 reporting_status: inprogress
 sort: ''
 sources: []
 standalone: false
-tags: []
-x_axis_label: Year
+tags:
+  - ''
+x_axis_label: Dados do grafico
